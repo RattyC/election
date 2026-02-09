@@ -1,24 +1,33 @@
+
 {
     "_id": ObjectId("..."),
-    "station_id": "BKK-Z1-U001", // Ref ไปหา polling_stations
-    "constituency_id": 1,        // Denormalize เพื่อ Group by เขตได้เลยไม่ต้อง Join
-    "province": "กรุงเทพมหานคร",   // Denormalize เพื่อ Group by จังหวัดได้เลย
+    
+    // 1. Identification & Chain
+    "station_id": "BKK-Z1-U001",
     "ballot_type": "constituency", // หรือ "party_list"
-    "timestamp": ISODate("2026-02-09T09:30:00Z"),
-    "reporter_id": "STAFF001",
-    
-    // Array ของผลคะแนน
-    "results": [
-        { "candidate_id": ObjectId("..."), "score": 150 }, // กรณี ballot_type = constituency
-        { "candidate_id": ObjectId("..."), "score": 120 }
-        // หรือถ้าเป็น party_list จะเก็บเป็น { "party_id": ..., "score": ... }
-    ],
-    
-    // สรุปยอดของ submission ครั้งนี้
-    "stats": {
-        "total_good_votes": 270,
-        "bad_votes": 5,
-        "no_vote": 2, // โนโหวต
-        "total_ballots": 277
-    }
+    "sequence_no": 6,              // ลำดับที่ส่ง (ต้องต่อเนื่อง 1,2,3...)
+    "timestamp": ISODate("..."),
+
+    // 2. Data Payload (เนื้อหาคะแนน)
+    "payload": {
+        "voter_turnout": 600,       // ผู้มาใช้สิทธิ (เซ็นชื่อ)
+        "total_ballots": 600,       // บัตรที่ใช้จริง
+        "results": [
+            { "candidate_id": 1, "score": 300 }, // หรือ party_id
+            { "candidate_id": 2, "score": 250 }
+        ],
+        "stats": {
+            "good": 550, "bad": 30, "no_vote": 20
+        }
+    },
+
+    // 3. Anti-Fraud & Integrity Proofs
+    "integrity_status": "ACCEPTED", // "ACCEPTED", "REJECTED" (ถ้าโกง), "FLAGGED"
+    "integrity_check": {
+        "is_ghost_vote": false,      // ballots > turnout?
+        "is_over_eligible": false    // turnout > eligible?
+    },
+    "prev_hash": "a1b2c3...",       // Hash ของ sequence 5 (ถ้าแก้ seq 5, hash จะเปลี่ยนและ chain ขาด)
+    "data_hash": "f9e8d7...",       // Hash ของ payload ตัวเอง
+    "reporter_signature": "sign_x9z..." // Digital Signature จาก Private Key จนท.
 }

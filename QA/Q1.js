@@ -1,27 +1,20 @@
-db.vote_submissions.aggregate([
-    { $match: { ballot_type: "party_list" } },
-    { $sort: { station_id: 1, timestamp: -1 } }, // Sort เพื่อให้ document ล่าสุดอยู่บนสุดของแต่ละกลุ่ม
+db.vote_transactions.aggregate([
+    { $match: { ballot_type: "party_list", integrity_status: "ACCEPTED" } },
+    { $sort: { station_id: 1, sequence_no: -1 } },
     {
         $group: {
-        _id: "$station_id",
-        latest_results: { $first: "$results" } // เลือกเฉพาะผลล่าสุดของหน่วยนี้
+            _id: "$station_id", // เลือกเฉพาะ seq ล่าสุดของหน่วย
+            latest_payload: { $first: "$payload" }
         }
     },
-    { $unwind: "$latest_results" },
+    { $unwind: "$latest_payload.results" },
     {
         $group: {
-        _id: "$latest_results.party_id",
-        total_votes: { $sum: "$latest_results.score" }
+            _id: "$latest_payload.results.id",
+            total_votes: { $sum: "$latest_payload.results.score" }
         }
     },
     { $sort: { total_votes: -1 } },
     { $limit: 10 },
-    {
-        $lookup: {
-        from: "parties",
-        localField: "_id",
-        foreignField: "_id",
-        as: "party_info"
-        }
-    }
+    { $lookup: { from: "parties", localField: "_id", foreignField: "_id", as: "party_info" } }
 ])

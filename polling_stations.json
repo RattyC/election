@@ -1,0 +1,13 @@
+    {
+    "_id": "BKK-Z1-U001",           // ID: จังหวัด-เขต-หน่วย
+    "province": "กรุงเทพมหานคร",
+    "constituency_id": 1,
+    "unit_no": 1,
+    "location_name": "โรงเรียนวัด...",
+    "total_eligible_voters": 800,   // Hard Cap: ห้ามมีบัตรเกินตัวเลขนี้เด็ดขาด
+    
+    // Security Fields (PKI)
+    "station_public_key": "MIIBIjANBgkqhki...", // ใช้ตรวจสอบ Digital Signature ของหน่วยนี้
+    "last_transaction_hash": "a1b2c3...",       // Hash ของธุรกรรมล่าสุด (Anchor)
+    "current_sequence": 5                       // ลำดับการส่งล่าสุด
+}
