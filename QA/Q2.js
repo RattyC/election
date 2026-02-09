@@ -1,8 +1,20 @@
+db.vote_transactions.createIndex(
+    { station_id: 1, ballot_type: 1, sequence_no: -1 },
+    { name: "idx_station_lookup" }
+    );
 db.vote_transactions.aggregate([
     {
+        $lookup: {
+            from: "polling_stations",
+            localField: "station_id",
+            foreignField: "_id",
+            as: "station_info"
+        }
+    },
+    { $unwind: "$station_info" },
+    {
         $match: {
-            // สมมติ lookup station_ids ในเขต X มาแล้ว หรือมี field นี้
-            "payload.constituency_id": 1,
+            "station_info.constituency_id": 1,
             "ballot_type": "constituency",
             "integrity_status": "ACCEPTED"
         }
@@ -11,15 +23,23 @@ db.vote_transactions.aggregate([
     {
         $group: {
             _id: "$station_id",
-            latest_payload: { $first: "$payload" }
+            latest_doc: { $first: "$$ROOT" }
         }
     },
-    { $unwind: "$latest_payload.results" },
+    { $unwind: "$latest_doc.payload.results" },
     {
         $group: {
-            _id: "$latest_payload.results.candidate_id",
-            total_votes: { $sum: "$latest_payload.results.score" }
+            _id: "$latest_doc.payload.results.id", 
+            total_votes: { $sum: "$latest_doc.payload.results.score" }
         }
     },
-    { $sort: { total_votes: -1 } }
+    { $sort: { total_votes: -1 } },
+    {
+        $lookup: {
+            from: "candidates_constituency",
+            localField: "_id",
+            foreignField: "_id",
+            as: "candidate_info"
+        }
+    }
 ])

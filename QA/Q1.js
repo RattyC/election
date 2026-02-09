@@ -1,3 +1,7 @@
+db.vote_transactions.createIndex(
+    { ballot_type: 1, integrity_status: 1, station_id: 1, sequence_no: -1 },
+    { name: "idx_dashboard_agg" }
+);
 db.vote_transactions.aggregate([
     {
         $match: {
@@ -15,19 +19,19 @@ db.vote_transactions.aggregate([
     { $unwind: "$latest_doc.payload.results" },
     {
         $group: {
-            _id: "$latest_doc.payload.results.id", 
+            _id: "$latest_doc.payload.results.id",
             total_votes: { $sum: "$latest_doc.payload.results.score" }
         }
     },
-    
+
     { $sort: { total_votes: -1 } },
     { $limit: 10 },
-    
+
     {
         $lookup: {
             from: "parties",
-            localField: "_id",     
-            foreignField: "_id",   
+            localField: "_id",
+            foreignField: "_id",
             as: "party_info"
         }
     }

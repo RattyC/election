@@ -4,58 +4,86 @@ import random
 import hashlib
 import json
 from datetime import datetime, timedelta, timezone
-from bson.objectid import ObjectId
 import os
+from bson.objectid import ObjectId
 
-# Config
+# --- CONFIG ---
 DB_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
 DB_NAME = "election_2026_secure"
 client = pymongo.MongoClient(DB_URI)
 db = client[DB_NAME]
 fake = Faker('th_TH')
 
+# --- CLEANUP ---
+print("Cleaning old data...")
 db.drop_collection("polling_stations")
 db.drop_collection("vote_transactions")
 db.drop_collection("parties")
-db.drop_collection("candidates") 
+db.drop_collection("candidates_constituency") # ใช้ชื่อนี้ตาม Query
+db.drop_collection("constituencies")
 
-print("Generating Secure Data...")
+print("Generating Consistent Data...")
 
-# 1. Helper Functions
+# Helper Function
 def calculate_hash(data):
-    """SHA-256 Hashing for Integrity Check"""
     encoded = json.dumps(data, sort_keys=True, default=str).encode()
     return hashlib.sha256(encoded).hexdigest()
 
-# 2. Master Data: Parties & Candidates (เติมให้ครบตามโจทย์)
+# 1. PARTIES
 parties = [{"_id": i, "name": f"พรรค {fake.company()}"} for i in range(1, 58)]
 db.parties.insert_many(parties)
 print(f"✅ Generated {len(parties)} Parties")
 
-# สร้าง Candidate จำลอง (สมมติเขตละ 10 คน * 400 เขต = 4000 คน)
-candidates = []
-for i in range(1, 4001):
-    candidates.append({
+# 2. CONSTITUENCIES
+constituencies = []
+provinces = ["Bangkok", "Chiang Mai", "Khon Kaen", "Phuket", "Chonburi", "Nakhon Ratchasima"]
+for i in range(1, 401):
+    constituencies.append({
         "_id": i,
-        "name": fake.name(),
-        "party_id": random.choice(parties)["_id"],
-        "constituency_id": (i % 400) + 1,
-        "candidate_no": random.randint(1, 20)
+        "province": random.choice(provinces),
+        "zone": (i % 10) + 1,
+        "total_seats": 1
     })
-db.candidates.insert_many(candidates)
-print(f"✅ Generated {len(candidates)} Candidates")
+db.constituencies.insert_many(constituencies)
+print(f"✅ Generated {len(constituencies)} Constituencies")
 
-# 3. Polling Stations
+# 3. CANDIDATES (สำคัญ: เก็บ ID ไว้ใช้งานต่อ)
+candidates_list = []
+candidates_by_constituency = {} # Map เก็บ candidates แยกตามเขต
+
+# สร้างผู้สมัครเขตละ 10 คน
+id_counter = 1
+for const in constituencies:
+    candidates_by_constituency[const["_id"]] = []
+    
+    for no in range(1, 11):
+        c_doc = {
+            "_id": id_counter, # ใช้ Integer ID เพื่อให้ง่ายและตรงกันแน่นอน
+            "name": fake.name(),
+            "party_id": random.choice(parties)["_id"],
+            "constituency_id": const["_id"],
+            "candidate_no": no
+        }
+        candidates_list.append(c_doc)
+        candidates_by_constituency[const["_id"]].append(c_doc) # เก็บไว้สุ่มตอนทำ txn
+        id_counter += 1
+        
+db.candidates_constituency.insert_many(candidates_list)
+print(f"✅ Generated {len(candidates_list)} Candidates (IDs matched)")
+
+# 4. POLLING STATIONS
 stations = []
 station_ids = []
 for i in range(50000): 
     s_id = f"S{i:05d}"
+    target_const = random.choice(constituencies) # สุ่มเขต
+    
     stations.append({
         "_id": s_id,
-        "province": random.choice(["Bangkok", "Chiang Mai", "Phuket", "Khon Kaen"]),
-        "constituency_id": random.randint(1, 400),
-        "total_eligible_voters": 1000, 
-        "station_public_key": f"PUB_KEY_{s_id}", 
+        "province": target_const["province"],
+        "constituency_id": target_const["_id"],
+        "total_eligible_voters": 1000,
+        "station_public_key": f"PUB_KEY_{s_id}",
         "last_transaction_hash": "GENESIS_HASH",
         "current_sequence": 0
     })
@@ -65,75 +93,74 @@ for i in range(50000):
         db.polling_stations.insert_many(stations)
         stations = []
 if stations: db.polling_stations.insert_many(stations)
-print("✅ Generated Polling Stations")
+print(f"✅ Generated Polling Stations")
 
-# 4. Generate Secure Vote Transactions
+# 5. VOTE TRANSACTIONS
 transactions = []
 target_stations = random.sample(station_ids, 20000) 
 
+# Cache Station Info เพื่อความเร็ว (ไม่ต้อง query db บ่อยๆ)
+station_map = {s["_id"]: s for s in db.polling_stations.find({"_id": {"$in": target_stations}})}
+
+print("Generating Transactions...")
 for s_id in target_stations:
-    # แต่ละหน่วยส่งผล 1-3 ครั้ง (Sequence)
+    s_info = station_map.get(s_id)
+    if not s_info: continue
+        
     num_txns = random.choices([1, 2, 3], weights=[70, 20, 10], k=1)[0]
-    
-    # ต้องแยก Chain สำหรับ Party List และ Constituency หรือรวมกันก็ได้ 
-    # ในที่นี้สมมติส่งแยก Transaction กัน แต่ใช้ Sequence ต่อเนื่องกัน
     prev_hash = "GENESIS_HASH"
     current_seq = 0
     
     for _ in range(num_txns):
         current_seq += 1
-        
-        # สุ่มว่าจะส่งบัตรประเภทไหน (หรือส่งทั้งคู่)
         b_type = random.choice(["party_list", "constituency"])
-        
-        # จำลองตัวเลข
         turnout = random.randint(500, 900)
         
-        # Fraud Logic (บัตรเขย่ง)
+        # Logic คะแนน
         is_fraud = random.random() < 0.01 
         ballots = turnout + 5 if is_fraud else turnout 
-        
-        # Math Logic: เกลี่ยคะแนนให้ผลรวมตรงกับบัตรดี
         bad_votes = random.randint(0, 20)
         no_votes = random.randint(0, 20)
+        if ballots < (bad_votes + no_votes): ballots = bad_votes + no_votes + 10
         good_votes = ballots - bad_votes - no_votes
         
-        # สร้าง Results ตามประเภทบัตร
         results_data = []
         if b_type == "party_list":
-            # สุ่ม 5 พรรค แบ่งคะแนนกัน
             chosen_parties = random.sample(parties, 5)
-            # แบ่งคะแนนแบบสุ่มให้รวมได้ good_votes
             points = sorted([random.randint(0, good_votes) for _ in range(4)])
             scores = [points[0]] + [points[i+1]-points[i] for i in range(3)] + [good_votes-points[3]]
             for idx, p in enumerate(chosen_parties):
                 results_data.append({"id": p["_id"], "score": scores[idx]})
-        else:
-            # สุ่มผู้สมัครในเขต (สมมติ ID มั่วๆ เพื่อความเร็ว หรือดึงจริงก็ได้)
-            # เพื่อความง่าย ใช้ ID 1-10
-            cands = [{"id": x, "score": 0} for x in range(1, 6)]
-            # แบ่งคะแนนเหมือนด้านบน
-            points = sorted([random.randint(0, good_votes) for _ in range(4)])
-            scores = [points[0]] + [points[i+1]-points[i] for i in range(3)] + [good_votes-points[3]]
-            for idx, c in enumerate(cands):
-                c["score"] = scores[idx]
-            results_data = cands
+                
+        else: # Constituency
+            # ดึงผู้สมัคร "จริงๆ" ของเขตนี้มาใช้ (แก้ปัญหา ID ไม่ตรง)
+            real_candidates = candidates_by_constituency.get(s_info["constituency_id"], [])
+            
+            if real_candidates:
+                # เลือกมา 5 คนจากเขตนั้น
+                chosen_cands = random.sample(real_candidates, min(5, len(real_candidates)))
+                points = sorted([random.randint(0, good_votes) for _ in range(len(chosen_cands)-1)])
+                # Logic แบ่งคะแนน (simplified)
+                if not points: points = [good_votes] 
+                else:
+                    scores = [points[0]] + [points[i+1]-points[i] for i in range(len(points)-1)] + [good_votes-points[-1]]
+                    
+                for idx, c in enumerate(chosen_cands):
+                    # สำคัญ: ใช้ _id ของจริงจาก collection candidates
+                    score_val = scores[idx] if idx < len(scores) else 0
+                    results_data.append({"id": c["_id"], "score": score_val})
 
         payload = {
             "voter_turnout": turnout,
             "total_ballots": ballots,
-            "results": results_data,
+            "results": results_data, # ตอนนี้ ID ตรงกับ Master Data แล้ว
             "stats": {"good": good_votes, "bad": bad_votes, "no_vote": no_votes}
         }
         
-        # Integrity Check
         status = "ACCEPTED"
-        if ballots > turnout or turnout > 1000:
-            status = "REJECTED"
+        if ballots > turnout or turnout > 1000: status = "REJECTED"
 
-        # Cryptographic Process
         data_hash = calculate_hash(payload)
-        
         txn = {
             "station_id": s_id,
             "ballot_type": b_type,
@@ -153,4 +180,4 @@ for s_id in target_stations:
         transactions = []
 
 if transactions: db.vote_transactions.insert_many(transactions)
-print("✅ Finished Secure Data Generation.")
+print("✅ Finished Consistent Data Generation.")

@@ -1,11 +1,19 @@
-// 1. เพื่อหา Submission ล่าสุดของแต่ละหน่วย และเรียงลำดับเวลา (รองรับ Q5, Q6 และ Aggregation ทั้งหมดที่ต้องหา "latest")
-db.vote_submissions.createIndex({ "station_id": 1, "ballot_type": 1, "timestamp": -1 });
+// 1. Index หลักสำหรับ Dashboard (Q1, Q3, Q4)
+// ใช้สำหรับกวาดข้อมูลทั้งประเทศหรือจังหวัด แยกตามประเภทบัตรและสถานะ
+db.vote_transactions.createIndex(
+  { ballot_type: 1, integrity_status: 1, station_id: 1, sequence_no: -1 },
+  { name: "idx_dashboard_agg" }
+);
 
-// 2. เพื่อกรองตามเขตเลือกตั้ง (รองรับ Q2)
-db.vote_submissions.createIndex({ "constituency_id": 1, "ballot_type": 1, "timestamp": -1 });
+// 2. Index สำหรับเจาะจงหน่วยเลือกตั้ง (Q2, Q5, Q6)
+// ใช้สำหรับการ Lookup, การหา submission ล่าสุดของหน่วย, และ Audit Trail
+db.vote_transactions.createIndex(
+  { station_id: 1, ballot_type: 1, sequence_no: -1 },
+  { name: "idx_station_lookup" }
+);
 
-// 3. เพื่อกรองตามจังหวัด (รองรับ Q4)
-db.vote_submissions.createIndex({ "province": 1, "ballot_type": 1, "timestamp": -1 });
-
-// 4. เพื่อหา submission ทั้งหมดของประเภทบัตรนั้นๆ (รองรับ Q1, Q3)
-db.vote_submissions.createIndex({ "ballot_type": 1, "timestamp": -1 });
+// 3. Index เสริมสำหรับ Audit Trail แบบรวม (ตอบโจทย์ Q5 แบบดูรวมทุกประเภทบัตร)
+db.vote_transactions.createIndex(
+  { station_id: 1, sequence_no: 1 },
+  { name: "idx_audit_trail" }
+);
