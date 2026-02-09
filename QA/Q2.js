@@ -1,27 +1,25 @@
-db.vote_submissions.aggregate([
-    { $match: { constituency_id: 1, ballot_type: "constituency" } },
-    { $sort: { station_id: 1, timestamp: -1 } },
+db.vote_transactions.aggregate([
     {
-        $group: {
-        _id: "$station_id",
-        latest_results: { $first: "$results" }
+        $match: {
+            // สมมติ lookup station_ids ในเขต X มาแล้ว หรือมี field นี้
+            "payload.constituency_id": 1,
+            "ballot_type": "constituency",
+            "integrity_status": "ACCEPTED"
         }
     },
-    { $unwind: "$latest_results" },
+    { $sort: { station_id: 1, sequence_no: -1 } },
     {
         $group: {
-        _id: "$latest_results.candidate_id",
-        total_votes: { $sum: "$latest_results.score" }
+            _id: "$station_id",
+            latest_payload: { $first: "$payload" }
         }
     },
-    { $sort: { total_votes: -1 } },
+    { $unwind: "$latest_payload.results" },
     {
-        $lookup: {
-        from: "candidates",
-        localField: "_id",
-        foreignField: "_id",
-        as: "candidate_info"
+        $group: {
+            _id: "$latest_payload.results.candidate_id",
+            total_votes: { $sum: "$latest_payload.results.score" }
         }
-    }
+    },
+    { $sort: { total_votes: -1 } }
 ])
-//ndex { constituency_id: 1, ballot_type: 1, timestamp: -1 } เท่ากับจำนวนผู้สมัครในเขต
