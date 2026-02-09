@@ -1,0 +1,8 @@
+{
+    "_id": ObjectId("..."),
+    "name": "นาย ก.",
+    "type": "constituency",     // หรือ "party_list"
+    "party_id": ObjectId("..."), // Ref ไปหา parties
+    "constituency_id": 1,       // มีค่าเฉพาะผู้สมัครแบบเขต (Ref ไปหา constituencies)
+    "candidate_no": 5           // เบอร์ผู้สมัคร
+}

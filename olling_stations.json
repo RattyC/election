@@ -1,0 +1,7 @@
+{
+    "_id": "BKK-Z1-U001",       // Custom ID: จังหวัด-เขต-หน่วย (เพื่อความ Unique และอ่านง่าย)
+    "province": "กรุงเทพมหานคร",
+    "constituency_id": 1,
+    "unit_no": 1,
+    "location_name": "โรงเรียนวัด..."
+}
